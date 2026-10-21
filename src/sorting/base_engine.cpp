@@ -320,7 +320,13 @@ void BaseSequenceSortingEngine::Lv1FetchAndSortLaunchMt() {
   thread_status.thread_offset.resize(n_threads_, -1);
   thread_status.rank.resize(n_threads_, 0);
   omp_set_num_threads(n_threads_);
-#pragma omp parallel for schedule(dynamic)
+  // Each thread sorts all its buckets in the lv2 region sized for the first
+  // bucket it takes (see Lv2Sort), which relies on the buckets (sorted by
+  // decreasing size) being taken in increasing order. Since OpenMP 5.0 a
+  // dynamic schedule is nonmonotonic by default, and LLVM's libomp (used by
+  // clang, e.g. on macOS) lets threads steal earlier, larger buckets, which
+  // overflowed the region (crashes with more than one thread).
+#pragma omp parallel for schedule(monotonic: dynamic)
   for (auto i = lv1_start_bucket_; i < lv1_end_bucket_; ++i) {
     Lv2Sort(&thread_status, i, omp_get_thread_num());
   }
