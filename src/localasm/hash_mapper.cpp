@@ -75,9 +75,11 @@ void HashMapper::LoadAndBuild(const std::string &contig_file, int32_t min_len,
   }
 
   index_.reserve(n_kmers);
-  SpinLock mapper_lock;
 
-#pragma omp parallel for
+  // Insert serially: with all threads contending for one lock this was
+  // slower than a single thread, and the insertion order decides which
+  // offset is kept for a duplicate k-mer, so the result depended on the
+  // thread scheduling
   for (size_t i = 0; i < sz; ++i) {
     TKmer key;
     auto contig_view = refseq_.GetSeqView(i);
@@ -88,7 +90,6 @@ void HashMapper::LoadAndBuild(const std::string &contig_file, int32_t min_len,
                       seed_kmer_size);
       auto kmer = key.unique_format(seed_kmer_size);
       auto offset = EncodeContigOffset(contig_view.id(), j, key != kmer);
-      std::lock_guard<SpinLock> lk(mapper_lock);
       auto res = index_.emplace(kmer, offset);
       if (!res.second) {
         res.first->second |= 1ULL << 63;
